@@ -4,6 +4,8 @@ from sklearn.preprocessing import StandardScaler
 import tensorflow as tf
 from sklearn.metrics import classification_report, accuracy_score
 import joblib
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import SMOTE
 
 class DetectFraud:
     def __init__(self, path_file):
@@ -52,10 +54,19 @@ class DetectFraud:
         X = pd.get_dummies(X, columns=['type'], drop_first=True)
         y = data['isFraud']
         
+        # Normalisation
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         
-        return train_test_split(X_scaled, y, test_size=0.20, random_state=42)
+        # Sur/Sous-échantillonnage
+        rus_ratio = {0: 40000, 1: y.sum()}
+        smote_ratio = {0: 40000, 1: 45000}
+        rus = RandomUnderSampler(sampling_strategy=rus_ratio, random_state=42)
+        smote = SMOTE(sampling_strategy=smote_ratio, random_state=42)
+        X_resampled, y_resampled = rus.fit_resample(X_scaled, y)
+        X_resampled, y_resampled = smote.fit_resample(X_resampled, y_resampled)
+
+        return train_test_split(X_resampled, y_resampled, test_size=0.20, random_state=42)
 
     def build_and_compile_model(self, input_shape):
         model = tf.keras.Sequential([
@@ -70,7 +81,7 @@ class DetectFraud:
         return model
 
     def train_and_evaluate_model(self, model, X_train, X_test, y_train, y_test):
-        model.fit(X_train, y_train, epochs=1, batch_size=64, validation_split=0.2)
+        model.fit(X_train, y_train, epochs=15, batch_size=64, validation_split=0.2)
         
         predictions = model.predict(X_test)
         predictions = (predictions > 0.5).astype(int)
